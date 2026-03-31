@@ -1,0 +1,120 @@
+#########################################
+# TINT - Docker Justfile
+#########################################
+
+# Define live updates
+JUST_REPOSITORY := "https://raw.githubusercontent.com/thereisnotime/xxJust/master/docker/justfile"
+JUST_VERSION := "1.0"
+
+# Project Configuration
+IMAGE_NAME := "tempimage"
+IMAGE_TAG := "latest"
+REGISTRY := "hub.docker.com"
+
+# Define colors
+COLOR_DEFAULT := '\033[0m'
+COLOR_GREEN := '\033[0;32m'
+COLOR_YELLOW := '\033[0;33m'
+
+# Load .env file if it exists
+set dotenv-load := true
+
+# Default recipe - show help
+default: help
+
+# Show available recipes
+help:
+    @printf "{{COLOR_GREEN}}Available recipes:{{COLOR_DEFAULT}}\n\
+        {{COLOR_YELLOW}}all{{COLOR_DEFAULT}}         This will lint, build and test\n\
+        {{COLOR_YELLOW}}test{{COLOR_DEFAULT}}        Test the latest built image\n\
+        {{COLOR_YELLOW}}build{{COLOR_DEFAULT}}       Build Docker image\n\
+        {{COLOR_YELLOW}}build-run{{COLOR_DEFAULT}}   Build and run Docker container and remove it after exit\n\
+        {{COLOR_YELLOW}}run{{COLOR_DEFAULT}}         Run Docker container\n\
+        {{COLOR_YELLOW}}push{{COLOR_DEFAULT}}        Push Docker image to the registry\n\
+        {{COLOR_YELLOW}}pull{{COLOR_DEFAULT}}        Pull Docker image from the registry\n\
+        {{COLOR_YELLOW}}clean{{COLOR_DEFAULT}}       Remove Docker image and containers\n\
+        {{COLOR_YELLOW}}dive{{COLOR_DEFAULT}}        Analyze image disk usage with dive\n\
+        {{COLOR_YELLOW}}lint{{COLOR_DEFAULT}}        Run all linters\n\
+        {{COLOR_YELLOW}}megalint{{COLOR_DEFAULT}}    Run megalinter on the whole repository\n\
+        {{COLOR_YELLOW}}trivy{{COLOR_DEFAULT}}       Run trivy on the built image\n\
+        {{COLOR_YELLOW}}update-self{{COLOR_DEFAULT}} Updates justfile to latest\n"
+
+# Update justfile to latest version
+update-self:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Fetching current and new JUST_VERSION..."
+    curl --connect-timeout 5 -H 'Cache-Control: no-cache, no-store' --silent -o "justfile.new" "{{JUST_REPOSITORY}}"
+    CURRENT_VERSION_DOT=$(grep '^JUST_VERSION := ' "justfile" | sed 's/.*:= *"\(.*\)"/\1/')
+    CURRENT_VERSION=$(echo "$CURRENT_VERSION_DOT" | tr -d '.')
+    NEW_VERSION_DOT=$(grep '^JUST_VERSION := ' "justfile.new" | sed 's/.*:= *"\(.*\)"/\1/')
+    NEW_VERSION=$(echo "$NEW_VERSION_DOT" | tr -d '.')
+    echo -e "Current JUST_VERSION is {{COLOR_YELLOW}}${CURRENT_VERSION_DOT}{{COLOR_DEFAULT}}"
+    echo -e "New JUST_VERSION is {{COLOR_GREEN}}${NEW_VERSION_DOT}{{COLOR_DEFAULT}}"
+    IS_NEWER=$(awk "BEGIN {print ($CURRENT_VERSION < $NEW_VERSION)}")
+    if [ "$IS_NEWER" -eq 1 ]; then
+        echo -e "{{COLOR_YELLOW}}Updating justfile... {{COLOR_GREEN}}Done!{{COLOR_DEFAULT}}"
+        mv "justfile.new" "justfile"
+    else
+        echo -e "Current version is {{COLOR_GREEN}}up-to-date{{COLOR_DEFAULT}}. No need for update."
+        rm "justfile.new"
+    fi
+
+# Lint, build, and test
+all: lint build test
+    @echo -e "{{COLOR_YELLOW}}Done!{{COLOR_DEFAULT}}"
+
+# Clean up artifacts
+clean:
+    @echo -e "{{COLOR_YELLOW}}Cleaning up artifacts...{{COLOR_DEFAULT}}"
+    # TODO: Implement cleanup
+
+# Test the latest built image
+test:
+    @echo -e "{{COLOR_YELLOW}}Testing (needs a built image)...{{COLOR_DEFAULT}}"
+    docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock -v "{{justfile_directory()}}/tests":"/tests" -w "{{justfile_directory()}}" gcr.io/gcp-runtimes/container-structure-test test --image {{IMAGE_NAME}}:{{IMAGE_TAG}} --config /tests/test.yml
+
+# Build Docker image
+build:
+    @echo -e "{{COLOR_YELLOW}}Building Docker image...{{COLOR_DEFAULT}}"
+    docker build -t {{IMAGE_NAME}}:{{IMAGE_TAG}} .
+
+# Run Docker container
+run:
+    @echo -e "{{COLOR_YELLOW}}Running Docker container...{{COLOR_DEFAULT}}"
+    docker run -it {{IMAGE_NAME}}:{{IMAGE_TAG}}
+
+# Build and run Docker container with auto-cleanup
+build-run: build
+    @echo -e "{{COLOR_YELLOW}}Running Docker container with --rm flag...{{COLOR_DEFAULT}}"
+    docker run --rm -it {{IMAGE_NAME}}:{{IMAGE_TAG}}
+
+# Push Docker image to the registry
+push:
+    @echo -e "{{COLOR_YELLOW}}Pushing Docker image to the registry...{{COLOR_DEFAULT}}"
+    docker tag {{IMAGE_NAME}}:{{IMAGE_TAG}} {{REGISTRY}}/{{IMAGE_NAME}}:{{IMAGE_TAG}}
+    docker push {{REGISTRY}}/{{IMAGE_NAME}}:{{IMAGE_TAG}}
+
+# Analyze image disk usage with dive
+dive:
+    @echo -e "{{COLOR_YELLOW}}Analyzing build with dive...{{COLOR_DEFAULT}}"
+    docker run --rm -it -e CI=true -v /var/run/docker.sock:/var/run/docker.sock -v "{{justfile_directory()}}":"{{justfile_directory()}}" -w "{{justfile_directory()}}" wagoodman/dive:latest build -t {{IMAGE_NAME}}:{{IMAGE_TAG}} .
+
+# Pull Docker image from the registry
+pull:
+    @echo -e "{{COLOR_YELLOW}}Pulling Docker image from the registry...{{COLOR_DEFAULT}}"
+    docker pull {{REGISTRY}}/{{IMAGE_NAME}}:{{IMAGE_TAG}}
+
+# Run all linters
+lint: megalint
+    @echo -e "{{COLOR_YELLOW}}Linting...{{COLOR_DEFAULT}}"
+
+# Run Mega Linter on the whole repository
+megalint:
+    @echo -e "{{COLOR_YELLOW}}Running Mega Linter on the whole repository...{{COLOR_DEFAULT}}"
+    docker run --rm -e LOG_FILE="none" -e DISABLE_LINTERS=SPELL_CSPELL -e REPORT_OUTPUT_FOLDER='/tmp/' -v $(git rev-parse --show-toplevel):/tmp/lint oxsecurity/megalinter:v6 mega-linter-runner -p /tmp/lint/
+
+# Run Trivy security scan on the built image
+trivy:
+    @echo -e "{{COLOR_YELLOW}}Running Trivy on the whole repository (needs a built image)...{{COLOR_DEFAULT}}"
+    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 0 {{IMAGE_NAME}}:{{IMAGE_TAG}}

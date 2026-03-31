@@ -1,0 +1,356 @@
+#########################################
+# TINT - Terraform Justfile
+#########################################
+
+# Define live updates
+JUST_REPOSITORY := "https://raw.githubusercontent.com/thereisnotime/xxJust/master/terraform/justfile"
+JUST_VERSION := "1.0"
+
+# Define variables
+TF_MORE_ARGS := "-compact-warnings"
+TF_AUTO_APPLY := "-auto-approve"
+TF_PARALLELISM := "20"
+
+# Define colors
+COLOR_DEFAULT := '\033[0m'
+COLOR_GREEN := '\033[0;32m'
+COLOR_YELLOW := '\033[0;33m'
+
+# Load .env file if it exists
+set dotenv-load := true
+
+# Default recipe - show help
+default: help
+
+# Show available recipes
+help:
+    @printf "{{COLOR_GREEN}}Available recipes:{{COLOR_DEFAULT}}\n\
+        {{COLOR_YELLOW}}init{{COLOR_DEFAULT}}        Initialize Terraform\n\
+        {{COLOR_YELLOW}}validate{{COLOR_DEFAULT}}    Validate Terraform configuration\n\
+        {{COLOR_YELLOW}}fmt{{COLOR_DEFAULT}}         Format Terraform configuration\n\
+        {{COLOR_YELLOW}}plan{{COLOR_DEFAULT}}        Generate Terraform plan\n\
+        {{COLOR_YELLOW}}apply{{COLOR_DEFAULT}}       Apply Terraform changes\n\
+        {{COLOR_YELLOW}}tapply{{COLOR_DEFAULT}}      Apply Terraform changes for a specific target\n\
+        {{COLOR_YELLOW}}destroy{{COLOR_DEFAULT}}     Destroy Terraform resources\n\
+        {{COLOR_YELLOW}}taint{{COLOR_DEFAULT}}       Taint Terraform resources\n\
+        {{COLOR_YELLOW}}taintm{{COLOR_DEFAULT}}      Taint whole Terraform module\n\
+        {{COLOR_YELLOW}}taintfzf{{COLOR_DEFAULT}}    Taint Terraform resources with fzf\n\
+        {{COLOR_YELLOW}}untaintm{{COLOR_DEFAULT}}    Untaint whole Terraform module\n\
+        {{COLOR_YELLOW}}untaint{{COLOR_DEFAULT}}     Untaint Terraform resources\n\
+        {{COLOR_YELLOW}}untaintfzf{{COLOR_DEFAULT}}  Untaint Terraform resources with fzf\n\
+        {{COLOR_YELLOW}}console{{COLOR_DEFAULT}}     Open Terraform console\n\
+        {{COLOR_YELLOW}}clean{{COLOR_DEFAULT}}       Clean up Terraform artifacts\n\
+        {{COLOR_YELLOW}}graph{{COLOR_DEFAULT}}       Generates graph of all dependencies from the plan\n\
+        {{COLOR_YELLOW}}rover{{COLOR_DEFAULT}}       Render graph from plan and visualize in Rover\n\
+        {{COLOR_YELLOW}}blastradius{{COLOR_DEFAULT}} Render graph from plan and visualize in Blast Radius\n\
+        {{COLOR_YELLOW}}docs{{COLOR_DEFAULT}}        Generates documentation (README.md) for the modules\n\
+        {{COLOR_YELLOW}}cost{{COLOR_DEFAULT}}        Calculate estimated infrastructure costs\n\
+        {{COLOR_YELLOW}}tfsec{{COLOR_DEFAULT}}       Run tfsec to check for security issues\n\
+        {{COLOR_YELLOW}}semgrep{{COLOR_DEFAULT}}     Run semgrep to check for security issues on the current folder (FAST)\n\
+        {{COLOR_YELLOW}}kics{{COLOR_DEFAULT}}        Runs KICS to perform SAST on the code\n\
+        {{COLOR_YELLOW}}providers{{COLOR_DEFAULT}}   Lists TF providers and their module dependencies (FAST)\n\
+        {{COLOR_YELLOW}}megalint{{COLOR_DEFAULT}}    Run Mega Linter on the whole repo (SLOW)\n\
+        {{COLOR_YELLOW}}info{{COLOR_DEFAULT}}        Shows providers, output, state and more\n\
+        {{COLOR_YELLOW}}statepull{{COLOR_DEFAULT}}   Prints the current tfstate even if it is remote\n\
+        {{COLOR_YELLOW}}statepush{{COLOR_DEFAULT}}   Does terraform state push from a local file to the remote backend\n\
+        {{COLOR_YELLOW}}statebackup{{COLOR_DEFAULT}} Downloads the remote state into a local file as default_[timestamp].tfstate\n\
+        {{COLOR_YELLOW}}tfk8s{{COLOR_DEFAULT}}       Converts K8s yaml 'input.yaml' to Terraform resource 'converted.tf'\n\
+        {{COLOR_YELLOW}}req{{COLOR_DEFAULT}}         Checks local dependency requirements\n\
+        {{COLOR_YELLOW}}refresh{{COLOR_DEFAULT}}     Performs terraform refresh\n\
+        {{COLOR_YELLOW}}rmstate{{COLOR_DEFAULT}}     Deletes the remote state. Use with caution!\n\
+        {{COLOR_YELLOW}}rmstateall{{COLOR_DEFAULT}}  Deletes all of the remote state. Use with caution!\n\
+        {{COLOR_YELLOW}}mvstate{{COLOR_DEFAULT}}     Moves resource between states. Use with caution!\n\
+        {{COLOR_YELLOW}}upgrade{{COLOR_DEFAULT}}     Performs terraform init -upgrade\n\
+        {{COLOR_YELLOW}}migrate{{COLOR_DEFAULT}}     Performs terraform init -migrate-state\n\
+        {{COLOR_YELLOW}}unlock{{COLOR_DEFAULT}}      Unlocks the Terraform state\n\
+        {{COLOR_YELLOW}}import{{COLOR_DEFAULT}}      Import existing infrastructure into Terraform\n\
+        {{COLOR_YELLOW}}update-self{{COLOR_DEFAULT}} Updates justfile to latest\n"
+
+# Update justfile to latest version
+update-self:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Fetching current and new JUST_VERSION..."
+    curl --connect-timeout 5 -H 'Cache-Control: no-cache, no-store' --silent -o "justfile.new" "{{JUST_REPOSITORY}}"
+    CURRENT_VERSION_DOT=$(grep '^JUST_VERSION := ' "justfile" | sed 's/.*:= *"\(.*\)"/\1/')
+    CURRENT_VERSION=$(echo "$CURRENT_VERSION_DOT" | tr -d '.')
+    NEW_VERSION_DOT=$(grep '^JUST_VERSION := ' "justfile.new" | sed 's/.*:= *"\(.*\)"/\1/')
+    NEW_VERSION=$(echo "$NEW_VERSION_DOT" | tr -d '.')
+    echo -e "Current JUST_VERSION is \033[0;33m${CURRENT_VERSION_DOT}\033[0m"
+    echo -e "New JUST_VERSION is \033[0;32m${NEW_VERSION_DOT}\033[0m"
+    IS_NEWER=$(awk "BEGIN {print ($CURRENT_VERSION < $NEW_VERSION)}")
+    if [ "$IS_NEWER" -eq 1 ]; then
+        echo -e "\033[0;33mUpdating justfile... \033[0;32mDone!\033[0m"
+        mv "justfile.new" "justfile"
+    else
+        echo -e "Current version is \033[0;32mup-to-date\033[0m. No need for update."
+        rm "justfile.new"
+    fi
+
+# Initialize Terraform
+init:
+    @echo -e "{{COLOR_GREEN}}Initializing Terraform...{{COLOR_DEFAULT}}"
+    terraform init {{TF_MORE_ARGS}}
+
+# Perform terraform init -migrate-state
+migrate:
+    @echo -e "{{COLOR_GREEN}}Initializing Terraform...{{COLOR_DEFAULT}}"
+    terraform init -migrate-state
+
+# Validate Terraform configuration
+validate:
+    @echo -e "{{COLOR_YELLOW}}Validating Terraform configuration...{{COLOR_DEFAULT}}"
+    terraform validate {{TF_MORE_ARGS}}
+
+# Format Terraform configuration
+fmt:
+    @echo -e "{{COLOR_YELLOW}}Formatting Terraform configuration...{{COLOR_DEFAULT}}"
+    terraform fmt -recursive {{justfile_directory()}}
+
+# Generate Terraform plan
+plan: init fmt
+    @echo -e "{{COLOR_YELLOW}}Generating Terraform plan...{{COLOR_DEFAULT}}"
+    terraform plan {{TF_MORE_ARGS}}
+
+# Unlock Terraform state
+unlock:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_YELLOW}}Unlocking Terraform state...{{COLOR_DEFAULT}}"
+    PLAN=$(terraform plan {{TF_MORE_ARGS}} 2>&1 | grep -oE 'ID:\s+[0-9a-f-]+' | awk '{print $2}' || true)
+    if [ -z "$PLAN" ]; then
+        echo "No lock found"
+    else
+        echo "Lock ID: $PLAN"
+        terraform force-unlock -force "$PLAN"
+    fi
+
+# Visualize resources with Blast Radius
+blastradius:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_YELLOW}}Visualizing resources with Blast Radius...{{COLOR_DEFAULT}}"
+    terraform init
+    last_dir=$(basename "$PWD")
+    parent_dir=$(basename "$(dirname "$PWD")")
+    dir_suffix="$parent_dir/$last_dir"
+    docker run --rm -it -p 5000:5000 -v "{{justfile_directory()}}/../../../":/data:ro --security-opt apparmor:unconfined --cap-add=SYS_ADMIN 28mm/blast-radius --serve "/data/$dir_suffix"
+    xdg-open http://localhost:5000
+
+# Visualize resources with Rover
+rover:
+    @echo -e "{{COLOR_YELLOW}}Visualizing resources with Rover...{{COLOR_DEFAULT}}"
+    terraform init
+    terraform plan -out plan.out
+    terraform show -json plan.out > plan.json
+    docker run --rm -it -p 9000:9000 -v {{justfile_directory()}}/plan.json:/src/plan.json im2nguyen/rover:latest -planJSONPath=plan.json
+    xdg-open http://localhost:9000
+
+# Generate Terraform graph
+graph:
+    @echo -e "{{COLOR_YELLOW}}Generating Terraform graph...{{COLOR_DEFAULT}}"
+    terraform graph | dot -Tsvg > graph.svg
+
+# Show current Terraform state
+state:
+    @echo -e "{{COLOR_YELLOW}}Showing current Terraform state...{{COLOR_DEFAULT}}"
+    terraform state list
+
+# Show providers, workspaces, state, version, and outputs
+info:
+    @echo -e "{{COLOR_GREEN}}Showing providers...{{COLOR_DEFAULT}}"
+    terraform providers
+    @echo -e "{{COLOR_GREEN}}Showing workspaces...{{COLOR_DEFAULT}}"
+    terraform workspace list
+    @echo -e "{{COLOR_GREEN}}Showing state...{{COLOR_DEFAULT}}"
+    terraform state list
+    @echo -e "{{COLOR_GREEN}}Showing version...{{COLOR_DEFAULT}}"
+    terraform --version
+    @echo -e "{{COLOR_GREEN}}Showing outputs...{{COLOR_DEFAULT}}"
+    terraform output
+
+# Apply Terraform changes
+apply: init fmt
+    @echo -e "{{COLOR_GREEN}}Applying Terraform plan...{{COLOR_DEFAULT}}"
+    terraform apply -parallelism={{TF_PARALLELISM}} {{TF_MORE_ARGS}} {{TF_AUTO_APPLY}}
+
+# Apply Terraform changes for a specific target
+tapply target: init fmt
+    @echo -e "{{COLOR_GREEN}}Applying Terraform plan for target: {{target}}...{{COLOR_DEFAULT}}"
+    terraform apply -target={{target}} -parallelism={{TF_PARALLELISM}} {{TF_MORE_ARGS}} {{TF_AUTO_APPLY}}
+
+# Open Terraform console
+console:
+    @echo -e "{{COLOR_GREEN}}Opening console...{{COLOR_DEFAULT}}"
+    terraform console {{TF_MORE_ARGS}}
+
+# List TF providers
+providers:
+    @echo -e "{{COLOR_GREEN}}Getting providers...{{COLOR_DEFAULT}}"
+    terraform providers
+
+# Taint a Terraform resource
+taint resource:
+    @echo -e "{{COLOR_GREEN}}Tainting: {{resource}}...{{COLOR_DEFAULT}}"
+    terraform taint {{resource}}
+
+# Taint a whole Terraform module
+taintm module:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_GREEN}}Tainting module: {{module}}...{{COLOR_DEFAULT}}"
+    for addr in $(terraform state list "module.{{module}}"); do
+        terraform taint "$addr"
+    done
+
+# Taint Terraform resources with fzf
+taintfzf:
+    @echo -e "{{COLOR_GREEN}}Tainting with fzf...{{COLOR_DEFAULT}}"
+    terraform state list | fzf | xargs -n 1 terraform taint
+
+# Untaint a whole Terraform module
+untaintm module:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_GREEN}}Untainting module: {{module}}...{{COLOR_DEFAULT}}"
+    for addr in $(terraform state list "module.{{module}}"); do
+        terraform untaint "$addr"
+    done
+
+# Untaint a Terraform resource
+untaint resource:
+    @echo -e "{{COLOR_GREEN}}Untainting: {{resource}}...{{COLOR_DEFAULT}}"
+    terraform untaint {{resource}}
+
+# Untaint Terraform resources with fzf
+untaintfzf:
+    @echo -e "{{COLOR_GREEN}}Untainting with fzf...{{COLOR_DEFAULT}}"
+    terraform state list | fzf | xargs -n 1 terraform untaint
+
+# Destroy Terraform resources
+destroy:
+    @echo -e "{{COLOR_GREEN}}Destroying Terraform resources...{{COLOR_DEFAULT}}"
+    terraform destroy -parallelism={{TF_PARALLELISM}} {{TF_MORE_ARGS}}
+
+# Refresh Terraform resources
+refresh:
+    @echo -e "{{COLOR_GREEN}}Refreshing Terraform resources...{{COLOR_DEFAULT}}"
+    terraform refresh {{TF_MORE_ARGS}}
+
+# Upgrade Terraform providers
+upgrade:
+    @echo -e "{{COLOR_GREEN}}Upgrading Terraform resources...{{COLOR_DEFAULT}}"
+    terraform init -upgrade
+
+# Delete resource/module from remote state
+rmstate resource:
+    @echo -e "{{COLOR_GREEN}}Deleting resource/module from remote state...{{COLOR_DEFAULT}}"
+    terraform state rm {{resource}}
+
+# Delete all resources from remote state
+rmstateall:
+    @echo -e "{{COLOR_GREEN}}Deleting all resources and modules from remote state...{{COLOR_DEFAULT}}"
+    terraform state rm $(terraform state list)
+
+# Move resource between states
+mvstate source destination:
+    @echo -e "{{COLOR_GREEN}}Moving state...{{COLOR_DEFAULT}}"
+    terraform state mv {{source}} {{destination}}
+
+# Back up Terraform state to local file
+statebackup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_GREEN}}Backing up Terraform state...{{COLOR_DEFAULT}}"
+    terraform state pull | tail -n+1 > "default_$(date '+%Y%m%d%H%M%S').tfstate"
+
+# Pull Terraform state
+statepull:
+    @echo -e "{{COLOR_GREEN}}Pulling Terraform state...{{COLOR_DEFAULT}}"
+    terraform state pull
+
+# Push Terraform state from local file
+statepush file:
+    @echo -e "{{COLOR_GREEN}}Pushing Terraform state...{{COLOR_DEFAULT}}"
+    terraform state push {{file}}
+
+# Import existing infrastructure into Terraform
+import address id:
+    @echo -e "{{COLOR_GREEN}}Importing...{{COLOR_DEFAULT}}"
+    terraform import {{address}} {{id}}
+
+# Clean up Terraform artifacts
+clean:
+    @echo -e "{{COLOR_YELLOW}}Cleaning up Terraform artifacts...{{COLOR_DEFAULT}}"
+    rm -rf ./.terraform
+    rm -rf ./.terraform.lock.hcl
+    rm -rf ./.infracost
+
+# Run tfsec security scan
+tfsec:
+    @echo -e "{{COLOR_YELLOW}}Running tfsec...{{COLOR_DEFAULT}}"
+    docker run --rm -it -v "{{justfile_directory()}}:/src" aquasec/tfsec /src
+
+# Calculate estimated infrastructure costs with infracost
+cost:
+    @echo -e "{{COLOR_YELLOW}}Calculating estimated infrastructure costs with infracost...{{COLOR_DEFAULT}}"
+    docker run --rm -t -v "{{justfile_directory()}}":/src -v ~/.config/infracost:/root/.config/infracost infracost/infracost breakdown --path "/src" --show-skipped
+
+# Alias for cost
+infracost: cost
+
+# Run KICS SAST scan
+kics:
+    @echo -e "{{COLOR_YELLOW}}Running KICS...{{COLOR_DEFAULT}}"
+    docker run --rm -t -v .:/path checkmarx/kics scan -p /path
+
+# Run semgrep security scan
+semgrep:
+    @echo -e "{{COLOR_YELLOW}}Running semgrep...{{COLOR_DEFAULT}}"
+    docker run --rm -t -v .:/src returntocorp/semgrep semgrep --config auto
+
+# Run Mega Linter on the whole repository
+megalint:
+    @echo -e "{{COLOR_YELLOW}}Running Mega Linter on the whole repository...{{COLOR_DEFAULT}}"
+    docker run --rm -e LOG_FILE="none" -e REPORT_OUTPUT_FOLDER='/tmp/' -v $(git rev-parse --show-toplevel):/tmp/lint oxsecurity/megalinter:v6 mega-linter-runner -p /tmp/lint/
+
+# Generate Terraform documentation
+docs:
+    @echo -e "{{COLOR_YELLOW}}Generating Terraform documentation...{{COLOR_DEFAULT}}"
+    terraform-docs md ./ > README.md
+
+# Convert K8s YAML to Terraform resource
+tfk8s:
+    @echo -e "{{COLOR_YELLOW}}Converting K8s YAML (input.yaml) to Terraform resource (converted.tf)...{{COLOR_DEFAULT}}"
+    tfk8s -f input.yaml -o converted.tf
+
+# Check awscli version
+check-awscli-version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_YELLOW}}Checking awscli version...{{COLOR_DEFAULT}}"
+    if aws --version 2>&1 | awk '{split($2,ver,"."); if (ver[1] > 2) exit 0; else exit 1}'; then
+        echo -e "{{COLOR_GREEN}}OK{{COLOR_DEFAULT}}"
+    else
+        echo -e "\033[0;31mError: awscli version must be greater than 2.x\033[0m"
+        exit 1
+    fi
+
+# Check terraform version
+check-terraform-version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{COLOR_YELLOW}}Checking terraform version...{{COLOR_DEFAULT}}"
+    if terraform version | awk '{split($2,ver,"."); if (ver[1] > 1 || (ver[1] == 1 && ver[2] >= 4 && ver[3] >= 2)) exit 0; else exit 1}'; then
+        echo -e "{{COLOR_GREEN}}OK{{COLOR_DEFAULT}}"
+    else
+        echo -e "\033[0;31mError: terraform version must be equal to or greater than 1.4.2\033[0m"
+        exit 1
+    fi
+
+# Check local dependency requirements
+req: check-awscli-version check-terraform-version
+    @echo -e "{{COLOR_YELLOW}}Checking local dependency requirements...{{COLOR_DEFAULT}}"
+
+# Run all: init, validate, fmt, plan, apply
+all: init validate fmt plan apply

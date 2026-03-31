@@ -1,0 +1,32 @@
+name: Lint Justfiles
+
+on:
+  push:
+    paths:
+      - '**/justfile'
+  pull_request:
+    paths:
+      - '**/justfile'
+
+jobs:
+  lint-justfiles:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Find and lint Justfiles
+        run: |
+          find . -name justfile -type f -print0 | while IFS= read -r -d '' justfile; do
+            dir=$(dirname "$justfile")
+            echo "Checking $justfile..."
+            just --justfile "$justfile" --summary > /dev/null
+            if [ $? -ne 0 ]; then
+              echo "Linting failed for $justfile"
+              exit 1
+            fi
+          done
